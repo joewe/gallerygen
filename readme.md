@@ -11,8 +11,6 @@ A simple Go tool to automatically create a static HTML photo gallery from a fold
 - ⚡ Lazy loading for better performance
 - 🎯 No external dependencies (only Go and `zip` command)
 
-## Installation
-
 ## Usage
 
 ```bash
