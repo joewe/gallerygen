@@ -34,7 +34,22 @@ document.querySelectorAll(".zoomable").forEach(img => {
 
 // Zip a folder using the 'zip' command
 func ZipWithZip(sourceFolder, targetZip string) error {
-	cmd := exec.Command("zip", "-r", targetZip, sourceFolder)
+	// Get absolute paths
+	absSource, err := filepath.Abs(sourceFolder)
+	if err != nil {
+		return err
+	}
+	absTarget, err := filepath.Abs(targetZip)
+	if err != nil {
+		return err
+	}
+
+	// Change to parent directory of source folder
+	parentDir := filepath.Dir(absSource)
+	folderName := filepath.Base(absSource)
+
+	cmd := exec.Command("zip", "-r", absTarget, folderName)
+	cmd.Dir = parentDir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
@@ -53,16 +68,25 @@ func main() {
 	}
 
 	folder := os.Args[1]
-	output := os.Args[2]
+	outputFilename := os.Args[2]
 
 	// validate folder
 	info, err := os.Stat(folder)
 	if err != nil || !info.IsDir() {
-		log.Fatalf("Pfad ist kein gültiger Ordner: %v", err)
+		log.Fatalf("Path is not a valid directory: %v", err)
 	}
 
-	var images []string
+	// Get absolute path of folder and determine output directory
+	absFolder, err := filepath.Abs(folder)
+	if err != nil {
+		log.Fatalf("Error to get absolute path: %v", err)
+	}
 
+	// Output directory is the parent directory of the image folder
+	outputDir := filepath.Dir(absFolder)
+	folderName := filepath.Base(absFolder)
+
+	var images []string
 	// Walk through folder for image files
 	filepath.WalkDir(folder, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -71,11 +95,11 @@ func main() {
 		if d.IsDir() {
 			return nil
 		}
-
 		lower := strings.ToLower(d.Name())
-		if strings.HasSuffix(lower, ".jpg") || strings.HasSuffix(lower, ".jpeg") || strings.HasSuffix(lower, ".png") || strings.HasSuffix(lower, ".webp") || strings.HasSuffix(lower, ".gif") {
-			rel := d.Name() // relative path
-			images = append(images, rel)
+		if strings.HasSuffix(lower, ".jpg") || strings.HasSuffix(lower, ".jpeg") ||
+			strings.HasSuffix(lower, ".png") || strings.HasSuffix(lower, ".webp") ||
+			strings.HasSuffix(lower, ".gif") {
+			images = append(images, d.Name())
 		}
 		return nil
 	})
@@ -83,29 +107,31 @@ func main() {
 	// Build HTML img tags
 	var b strings.Builder
 	for _, img := range images {
-		b.WriteString(fmt.Sprintf("<img class=\"zoomable\" src=\"%s/%s\" alt=\"\" loading=\"lazy\">\n", folder, img))
+		b.WriteString(fmt.Sprintf("<img class=\"zoomable\" src=\"%s/%s\" alt=\"\" loading=\"lazy\">\n", folderName, img))
 	}
 
 	// Zip the folder using 'zip' command
+	zipPath := filepath.Join(outputDir, "photos.zip")
 	fmt.Println("Zipping folder...")
 	if CheckCommandExists("zip") {
-		err := ZipWithZip(folder, "photos.zip")
+		err := ZipWithZip(absFolder, zipPath)
 		if err != nil {
 			fmt.Printf("Error: %v\n", err)
 		} else {
-			fmt.Println("✓ Successfully created photos.zip")
+			fmt.Println("✓ Successfully created photos.zip at:", zipPath)
 		}
 	} else {
 		fmt.Println("✗ 'zip' command not found")
 	}
 
 	// Replace marker
+	outputPath := filepath.Join(outputDir, outputFilename)
 	html := strings.Replace(htmlTemplate, "{{IMAGES}}", b.String(), 1)
+
 	// Write to output file
-	if err := os.WriteFile(output, []byte(html), 0644); err != nil {
+	if err := os.WriteFile(outputPath, []byte(html), 0644); err != nil {
 		log.Fatalf("Error writing file: %v", err)
 	}
 
-	fmt.Println("Ready! HTML generated:", output)
-
+	fmt.Println("Ready! HTML generated:", outputPath)
 }
